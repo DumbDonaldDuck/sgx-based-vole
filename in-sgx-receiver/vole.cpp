@@ -8,6 +8,9 @@
 #include <string>
 #include <sys/time.h>
 
+#include <chrono>
+typedef std::chrono::system_clock::time_point Timer;
+
 using namespace std;
 
 #include <openssl/rsa.h>
@@ -112,6 +115,7 @@ int main(int argc, char *argv[]){
         //  B       field F     -> sender
         //  Δ       field B     -> sender
     cout << "---[In SGX] Generating A/B/C/Delta ..." << endl;
+    Timer generateBegin = std::chrono::system_clock::now();
 
 
 
@@ -176,12 +180,17 @@ int main(int argc, char *argv[]){
     }
 
     cout << "---[In SGX] Generating A/B/C/Delta [done]" << endl;
-
+    Timer generateEnd = std::chrono::system_clock::now();
+    std::cout << "---[In SGX] ---[Time] Generating A/B/C/Delta: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(generateEnd - generateBegin).count() << "ms" << std::endl;
+    
     
     
     /*----------- Encryption -----------*/
     if(PROTOCOL_MODE) cout << "---[In SGX] Encrypting A/B/C/Delta ..." << endl;
     else cout << "---[In SGX] Encrypting B/Delta ..." << endl;
+
+    Timer encryptBDeltaBegin = std::chrono::system_clock::now();
 
     int sender_pk_size = RSA_size(sender_pk);       //  count in byte
     int element_B_count_per_cipher = (sender_pk_size   - DEFAULT_PADDING_LENGTH) / bytes_count_B;
@@ -229,7 +238,12 @@ int main(int argc, char *argv[]){
     //  Encrypting Delta
     RSA_public_encrypt(bytes_count_Delta, randDelta, share_buf_Delta_ptr, sender_pk_inside, PADDING_MODE);
     cout << "---[In SGX] ---Encrypting Delta done" << endl;
-
+    
+    
+    Timer encryptBDeltaEnd = std::chrono::system_clock::now();
+    std::cout << "---[In SGX] ---[Time] Encrypting B/Delta: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(encryptBDeltaEnd - encryptBDeltaBegin).count() << "ms" << std::endl;
+    
 
     // cout << "bytes_count_Delta = " << bytes_count_Delta << endl;
 
@@ -258,6 +272,8 @@ int main(int argc, char *argv[]){
     //  Encrypting A/C (Optional)       
 
     if(PROTOCOL_MODE){  //  need to encrypt
+        Timer encryptACBegin = std::chrono::system_clock::now();
+
         RSA *receiver_pk_inside = RSA_new();
         const BIGNUM *n, *e;
         RSA_get0_key(receiver_pk, &n, &e, NULL);
@@ -269,19 +285,26 @@ int main(int argc, char *argv[]){
         int cipher_count_A = ceil(size_m *1.0/ element_A_count_per_cipher);
         int cipher_count_C = ceil(size_m *1.0/ element_C_count_per_cipher);
 
+
+        // cout << "sender_pk_size = " << RSA_size(sender_pk) << endl;
+        // cout << "sender_pk_size_inside = " << RSA_size(sender_pk_inside) << endl;
+
+        // cout << "receiver_pk_size = " << RSA_size(receiver_pk) << endl;
+        // cout << "receiver_pk_size_inside = " << RSA_size(receiver_pk_inside) << endl;
+
         //  Encrypting A
         int real_element_in_cipher_count_A = element_A_count_per_cipher;
         for(iter = 0; iter < cipher_count_A - 1; iter ++){
             RSA_public_encrypt(real_element_in_cipher_count_A * bytes_count_A, \
             (unsigned char*)(randA + (iter * bytes_count_A * element_A_count_per_cipher)), \
-            (unsigned char*)(share_buf_A_ptr + (iter * sender_pk_size)) , \
+            (unsigned char*)(share_buf_A_ptr + (iter * receiver_pk_size)) , \
             receiver_pk_inside, PADDING_MODE);
-            
+            // cout << iter << endl;
         }
         real_element_in_cipher_count_A = size_m - iter * element_A_count_per_cipher;
         RSA_public_encrypt(real_element_in_cipher_count_A, \
         (const unsigned char*)(randA + (iter * bytes_count_A * element_A_count_per_cipher)), \
-        (unsigned char*)(share_buf_A_ptr + (iter * sender_pk_size)) , \
+        (unsigned char*)(share_buf_A_ptr + (iter * receiver_pk_size)) , \
         receiver_pk_inside, PADDING_MODE);
         cout << "---[In SGX] ---Encrypting A done" << endl;
 
@@ -290,7 +313,7 @@ int main(int argc, char *argv[]){
         for(iter = 0; iter < cipher_count_C - 1; iter ++){
             RSA_public_encrypt(real_element_in_cipher_count_C * bytes_count_C, \
             (unsigned char*)(randC + (iter * bytes_count_C * element_C_count_per_cipher)), \
-            (unsigned char*)(share_buf_C_ptr + (iter * sender_pk_size)) , \
+            (unsigned char*)(share_buf_C_ptr + (iter * receiver_pk_size)) , \
             receiver_pk_inside, PADDING_MODE);
             
         }
@@ -298,9 +321,14 @@ int main(int argc, char *argv[]){
         real_element_in_cipher_count_C = size_m - iter * element_C_count_per_cipher;
         RSA_public_encrypt(real_element_in_cipher_count_C, \
         (const unsigned char*)(randC + (iter * bytes_count_C * element_C_count_per_cipher)), \
-        (unsigned char*)(share_buf_C_ptr + (iter * sender_pk_size)) , \
+        (unsigned char*)(share_buf_C_ptr + (iter * receiver_pk_size)) , \
         receiver_pk_inside, PADDING_MODE);
         cout << "---[In SGX] ---Encrypting C done" << endl;
+
+        Timer encryptACEnd = std::chrono::system_clock::now();
+        std::cout << "---[In SGX] ---[Time] Encrypting A/C: ";
+        std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(encryptACEnd - encryptACBegin).count() << "ms" << std::endl;
+    
 
     }
     else{

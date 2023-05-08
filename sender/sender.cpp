@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include <netdb.h>
 
+#include <chrono>
+typedef std::chrono::system_clock::time_point Timer;
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -37,8 +40,13 @@ using namespace std;
 //  max bytes for a single send
 #define DEFAULT_MAX_SOCKET_LENGTH 
 
+
+
+// typedef Timer::timeUnit::clock::now();
+
 int main(int argc, char *argv[]) {
 
+    Timer totalBegin = std::chrono::system_clock::now();
 
     // Sender Protocol
         // out TEE
@@ -51,6 +59,8 @@ int main(int argc, char *argv[]) {
     /*----------- Generate Key -----------*/
     
     cout << "--------------------------------------------------------------------" << endl;
+    Timer generatepkBegin = std::chrono::system_clock::now();
+
     // cout << "Start" << endl;
     // cout << "--------------------------------------------------------------------" << endl;
     // cout << "--------------------------- Generate Key ---------------------------" << endl;
@@ -62,6 +72,12 @@ int main(int argc, char *argv[]) {
     
     RSA *sender_pk = RSAPublicKey_dup(sender_rsa);
     RSA *sender_sk = RSAPrivateKey_dup(sender_rsa);
+    // cout << "sender_pk_size = " << RSA_size(sender_pk) << endl;
+
+    Timer generatepkEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Generating pk: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(generatepkEnd - generatepkBegin).count() << "ms" << std::endl;
+    
     cout << "Generating rsa pk & sk for Sender [done]" << endl;
     cout << "--------------------------------------------------" << endl;
 
@@ -74,6 +90,9 @@ int main(int argc, char *argv[]) {
     // cout << "/*------------------ Socket Transfer (Send pk') ------------------*/" << endl;
 
     cout << "Sending pk' to Receiver ..." << endl;
+    Timer receiveresultBegin = std::chrono::system_clock::now();
+
+    Timer sendpkBegin = std::chrono::system_clock::now();
 
     //  create socket
     int sender_sockfd;
@@ -108,13 +127,25 @@ int main(int argc, char *argv[]) {
         //  BN_hex2bn(&sender_n, big_n);
         //  BN_hex2bn(&sender_e, big_e);
         //  RSA_set0_key(rsa2, modulus, privateExponent, NULL); //  must set NULL here for pk
+    
+    const BIGNUM *n, *e;
+    RSA_get0_key(sender_pk, &n, &e, NULL);
+    // cout << "sender_pk_size = " << RSA_size(sender_pk) << endl;
+    // RSA_print_fp(stdout, sender_pk, 0); 
 
-    char *big_n = BN_bn2hex(RSA_get0_n(sender_pk));     // big_n 是一块私有空间，不允许直接访问？
-    char *big_e = BN_bn2hex(RSA_get0_e(sender_pk));
+    char *big_n = BN_bn2hex(n);     // big_n 是一块私有空间，不允许直接访问？
+    char *big_e = BN_bn2hex(e);
+
     cout << "---Transfer sender's pk to char buffer done." << endl;
     // cout << "size of char_buff_n = " << strlen(big_n) << endl;
     // cout << "size of char_buff_e = " << strlen(big_e) << endl;
-    
+    // BIGNUM *sender_n = BN_new();
+    // BIGNUM *sender_e = BN_new();
+    // BN_hex2bn(&sender_n, big_n);
+    // BN_hex2bn(&sender_e, big_e);
+    // RSA *sender_pk_new = RSA_new();
+    // RSA_set0_key(sender_pk_new, BN_dup(sender_n), BN_dup(sender_e), NULL); //  must set NULL here for pk
+    // cout << "sender_pk_new_size = " <<  RSA_size(sender_pk_new) << endl;
 
     //  send char_n & char_e to Receiver
     int iret;
@@ -152,7 +183,10 @@ int main(int argc, char *argv[]) {
     // }
     // else cout << "---Send e to Receiver, confirm done." << endl;
 
-
+    Timer sendpkEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Socket Transfer: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(sendpkEnd - sendpkBegin).count() << "ms" << std::endl;
+    
 
     cout << "Sending pk' to Receiver [done]" << endl;
     cout << "--------------------------------------------------" << endl;
@@ -208,6 +242,7 @@ int main(int argc, char *argv[]) {
         }
         total_recv += (int)recved;  // 更新已发送长度
     }
+    // cout << "total recv: " << total_recv << endl;
     cout << "---Receiving Enc(B) from Receiver done." << endl;
 
     // memset(buffer_B, 0, buffer_size_B);
@@ -245,6 +280,10 @@ int main(int argc, char *argv[]) {
     // }
     // else cout << "---Send confirm of Enc(Delta) to Receiver done." << endl;
 
+    Timer receiveresultEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Socket Transfer: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(receiveresultEnd - receiveresultBegin).count() << "ms" << std::endl;
+    
     cout << "Receiving Enc(B) & Enc(Delta) from Receiver [done]" << endl;
     cout << "--------------------------------------------------" << endl;
 
@@ -253,21 +292,28 @@ int main(int argc, char *argv[]) {
     // cout << "--------------------------------------------------------------------" << endl;
     // cout << "/*-------------------------- Decryption --------------------------*/" << endl;
     cout << "Decrypting Enc(B) & Enc(Delta) ..." << endl;
+    Timer decryptBegin = std::chrono::system_clock::now();
 
     //  Decrypting B
-    // cout << "---Decrypting B" << endl;
-    // int bytes_ptr = 0;
-    // for(int i=0; i<cipher_count_B; i++){
-    //     // cout << i <<  endl;
-    //     int res = RSA_private_decrypt(sender_pk_size, (unsigned char*)(buffer_B + i*sender_pk_size), (unsigned char*)(randB + bytes_ptr), sender_sk, PADDING_MODE);
-    //     bytes_ptr += res;
-    // }
-    // cout << "---Decrypting B done" << endl;
+    cout << "---Decrypting B" << endl;
+    int bytes_ptr = 0;
+    // cout << cipher_count_B << endl;
+    // cout << sender_pk_size << endl;
+    for(int i=0; i<cipher_count_B; i++){
+        // cout << i <<  endl;
+        int res = RSA_private_decrypt(sender_pk_size, (unsigned char*)(buffer_B + i*sender_pk_size), (unsigned char*)(randB + bytes_ptr), sender_sk, PADDING_MODE);
+        bytes_ptr += res;
+    }
+    cout << "---Decrypting B done" << endl;
 
     cout << "---Decrypting Delta" << endl;
     RSA_private_decrypt(sender_pk_size, buffer_Delta, randDelta, sender_sk, PADDING_MODE);
     cout << "---Decrypting Delta done" << endl;
 
+    Timer decryptEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Decrypting Enc(B/Delta): ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(decryptEnd - decryptBegin).count() << "ms" << std::endl;
+    
 
     cout << "Decrypting Enc(B) & Enc(Delta) [done]" << endl;
     cout << "--------------------------------------------------" << endl;
@@ -281,8 +327,14 @@ int main(int argc, char *argv[]) {
     free(randDelta);
     close(sender_sockfd);
 
+    Timer totalEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Total time: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(totalEnd - totalBegin).count() << "ms" << std::endl;
+    
+
+
     /*----------- Done -----------*/
-    cout << "/*----------- Done -----------*/" << endl;
+    // cout << "/*----------- Done -----------*/" << endl;
     return 0;
 
 
@@ -292,4 +344,29 @@ int main(int argc, char *argv[]) {
 }
 
 
+// void safe_send(int sockfd, unsigned char* buffer, int buffer_size){
+//     int total_sent = 0;      // 已发送数据的长度
+//     while (total_sent < buffer_size) {  // 只要还有数据未发送完毕
+//         int sent = send(sockfd, buffer + total_sent, buffer_size - total_sent, 0);  // 发送剩余部分
+//         if (sent == -1) {  // 如果发送失败
+//             cout << "---[Error] Sending Enc(B) to Receiver failed." << endl;
+//             return;
+//         }
+//         total_sent += (int)sent;  // 更新已发送长度
+//     }
+//     cout << "---Sending Enc(B) to Receiver done." << endl;
+// }
+
+// void safe_recv(int sockfd, unsigned char* buffer, int buffer_size){
+//     int total_recv = 0;      // 已发送数据的长度
+//     while (total_recv < buffer_size) {  // 只要还有数据未发送完毕
+//         int recved = recv(sockfd, buffer + total_recv, buffer_size - total_recv, 0);  // 接收剩余部分
+//         if (recved == -1) {  // 如果发送失败
+//             cout << "---[Error] Receiving Enc(B) from Receiver failed." << endl;
+//             return;
+//         }
+//         total_recv += (int)recved;  // 更新已发送长度
+//     }
+//     cout << "---Receiving Enc(B) from Receiver done." << endl;
+// }
 

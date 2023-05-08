@@ -8,6 +8,10 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <netdb.h>
+
+#include <chrono>
+typedef std::chrono::system_clock::time_point Timer;
+
 #include <occlum_pal_api.h>
 #include <linux/limits.h>
 
@@ -24,12 +28,18 @@ using namespace std;
 #define RSA_KEY_BIT_LENGTH 2048
 #define RSA_PBULIC_EXPONENT RSA_F4  
 
+//  sender & receiver share the same key length
+//  otherwise, we need to transfer the key length
+
 // MAX Char buff size, at most is KEY_LENGTH_BIT/4 
     //  X-bit key length
     //  X/4 hex-length (0-F)
     //  each symbol of hex(0-F) is presented in char, which is 8 bit / 1 byte
     //  so the required length of CHAR_BUFF_SIZE is at most X/4
-#define CHAR_BUFF_SIZE (RSA_KEY_BIT_LENGTH/4 + 1)
+
+#define CHAR_BUFF_SIZE (RSA_KEY_BIT_LENGTH/4)
+// #define CHAR_BUFF_SIZE (RSA_KEY_BIT_LENGTH/4 + 1)
+// 上述写法会导致模数bytes + 1，从而导致解密失败
 
 // confirm buff size
 #define CONFIRM_BUFF_SIZE 16
@@ -37,6 +47,7 @@ using namespace std;
 // Receiver's port & addr could be designated at first
 #define RECEIVER_PORT 4602
 #define RECEIVER_ADDR "127.0.0.1"
+// localhost是个域名，性质跟 “www.baidu.com” 差不多。不能直接绑定套接字，必须先gethostbyname转成IP才能绑定。 
 
 //  parameters for func listen(int sockfd, int backlog);
 //  the length for the ESTABLISHED_STATUS_QUEUE
@@ -58,6 +69,7 @@ using namespace std;
 
 int main(int argc, char *argv[]) {
 
+    Timer totalBegin = std::chrono::system_clock::now();
 
     // // Receiver Protocol
     //     // out TEE
@@ -124,6 +136,8 @@ int main(int argc, char *argv[]) {
     /*----------- Socket Transfer -----------*/
     // cout << "/*----------- Socket Transfer -----------*/" << endl;
 
+    Timer connectBegin = std::chrono::system_clock::now();
+
     cout << "Receiving pk' from Receiver ..." << endl;
 
     //  create socket
@@ -167,16 +181,20 @@ int main(int argc, char *argv[]) {
     if(sender_sockfd < 0) cout << "---[Error] Connect from Sender failed." << endl;
     else cout << "---Connect from Sender " << inet_ntoa(sender_addr.sin_addr) << " done." << endl;
 
-
+    Timer connectEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Socket Connection: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(connectEnd - connectBegin).count() << "ms" << std::endl;
+    
     //  receiver n&e from the Sender
         //  send buffer strlen(buff)
         //  recv buffer sizeof(buff)
 
-    char confirm_buff[CONFIRM_BUFF_SIZE];
+
+    // char confirm_buff[CONFIRM_BUFF_SIZE];
     // cout << sizeof(confirm_buff) << endl;
     // memset(confirm_buff, 0, sizeof(confirm_buff));
     // cout << sizeof(confirm_buff) << endl;
-    strcpy(confirm_buff, "confirm");
+    // strcpy(confirm_buff, "confirm");
     // cout << sizeof(confirm_buff) << endl;
 
 
@@ -184,6 +202,7 @@ int main(int argc, char *argv[]) {
     // cout << sizeof(tmpptr) << endl;
     // memset(tmpptr, 0, sizeof(tmpptr));
     // cout << sizeof(tmpptr) << endl;
+    Timer receivepkBegin = std::chrono::system_clock::now();
 
     int iret;
 
@@ -195,17 +214,18 @@ int main(int argc, char *argv[]) {
 
     BIGNUM *sender_n = BN_new();
     BIGNUM *sender_e = BN_new();
-    char char_buff_exclusive[CHAR_BUFF_SIZE];
+    char char_buff_sender_n[CHAR_BUFF_SIZE];
+    char char_buff_sender_e[CHAR_BUFF_SIZE];
     
     //  receive n and send confirm
-    memset(char_buff_exclusive, 0, sizeof(char_buff_exclusive));
-    if ( (iret = recv(sender_sockfd, char_buff_exclusive, sizeof(char_buff_exclusive), 0)) <= 0 ) // receive n from Sender
+    memset(char_buff_sender_n, 0, sizeof(char_buff_sender_n));
+    if ( (iret = recv(sender_sockfd, char_buff_sender_n, sizeof(char_buff_sender_n), 0)) <= 0 ) // receive n from Sender
     { 
         cout << "---[Error] Receive n from Sender failed." << endl;
         return -1;
     }
     else cout << "---Receive n from Sender done." << endl;
-    BN_hex2bn(&sender_n, char_buff_exclusive);
+    BN_hex2bn(&sender_n, char_buff_sender_n);
     // if ( (iret = send(sender_sockfd, confirm_buff, strlen(confirm_buff), 0)) <= 0 ) // send confirm of n to Sender
     // { 
     //     cout << "---[Error] Send confirm of n to Sender failed." << endl;
@@ -215,14 +235,14 @@ int main(int argc, char *argv[]) {
 
 
     //  receive e and send confirm
-    memset(char_buff_exclusive, 0, sizeof(char_buff_exclusive));
-    if ( (iret = recv(sender_sockfd, char_buff_exclusive, sizeof(char_buff_exclusive), 0)) <= 0 ) // receive e from Sender
+    memset(char_buff_sender_e, 0, sizeof(char_buff_sender_e));
+    if ( (iret = recv(sender_sockfd, char_buff_sender_e, sizeof(char_buff_sender_e), 0)) <= 0 ) // receive e from Sender
     { 
         cout << "---[Error] Receive e from Sender failed." << endl;
         return -1;
     }
     else cout << "---Receive e from Sender done." << endl;
-    BN_hex2bn(&sender_e, char_buff_exclusive);
+    BN_hex2bn(&sender_e, char_buff_sender_e);
 
     // if ( (iret = send(sender_sockfd, confirm_buff, strlen(confirm_buff), 0)) <= 0 ) // send confirm of e to Sender
     // { 
@@ -234,7 +254,15 @@ int main(int argc, char *argv[]) {
 
     //  re-construct sender_pk from n&e
     RSA *sender_pk = RSA_new();
-    RSA_set0_key(sender_pk, sender_n, sender_e, NULL); //  must set NULL here for pk
+    RSA_set0_key(sender_pk, BN_dup(sender_n), BN_dup(sender_e), NULL); //  must set NULL here for pk
+    // cout << "sender_pk_size = " <<  RSA_size(sender_pk) << endl;
+    
+    // RSA_print_fp(stdout, sender_pk, 0); 
+
+    Timer receivepkEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Socket Transfer: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(receivepkEnd - receivepkBegin).count() << "ms" << std::endl;
+    
 
     cout << "Receiving pk' from Sender [done]" << endl;
     cout << "--------------------------------------------------" << endl;
@@ -243,6 +271,7 @@ int main(int argc, char *argv[]) {
  
 
 
+    Timer sgxBegin = std::chrono::system_clock::now();
 
 
     /*----------- Connect with TEE process -----------*/
@@ -306,6 +335,7 @@ int main(int argc, char *argv[]) {
     //  sender-pk
     char sender_pk_str[32] = {0};               //  RSA*
     snprintf(sender_pk_str, sizeof (sender_pk_str), "%lu", (unsigned long)sender_pk);
+    // cout << "sender_pk_size = " <<  RSA_size(sender_pk) << endl;
 
     //  buffer A/B/C/Delta Common Paras
     // The buffer shared between the outside and inside the enclave
@@ -483,6 +513,10 @@ int main(int argc, char *argv[]) {
     }
 
 
+    Timer sgxEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Interact with TEE process: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(sgxEnd - sgxBegin).count() << "ms" << std::endl;
+    
     cout << "--------------------------------------------------" << endl;
 
 
@@ -506,28 +540,43 @@ int main(int argc, char *argv[]) {
 
     if(PROTOCOL_MODE){  //  need to decrypt
 
+        Timer decryptBegin, decryptEnd;
+
         cout << "Decrypting A/C ..." << endl;
         RSA* receiver_sk = RSAPrivateKey_dup(receiver_rsa);
         int bytes_ptr;
 
         //  Decrypting A
-        bytes_ptr = 0;
         cout << "---Decrypting A" << endl;
+        decryptBegin = std::chrono::system_clock::now();
+        bytes_ptr = 0;
         for(int i=0; i<cipher_count_A; i++){
             int res = RSA_private_decrypt(receiver_pk_size, (unsigned char*)(buffer_A + i*receiver_pk_size), (unsigned char*)(randA + bytes_ptr), receiver_sk, PADDING_MODE);
             bytes_ptr += res;
-            // cout << i << endl;
+            // cout << "i = " << i << "    res = " << res << "bytes_ptr = " << endl;
         }
-        cout << bytes_ptr << endl;
-        cout << "---Decrypting C" << endl;
+        // cout << bytes_ptr << endl;
+        decryptEnd = std::chrono::system_clock::now();
+        std::cout << "---[Time] Decrypting Enc(A): ";
+        std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(decryptEnd - decryptBegin).count() << "ms" << std::endl;
+        
+
+
         //  Decrypting C
+        cout << "---Decrypting C" << endl;
+        decryptBegin = std::chrono::system_clock::now();
         bytes_ptr = 0;
         for(int i=0; i<cipher_count_A; i++){
             int res = RSA_private_decrypt(receiver_pk_size, (unsigned char*)(buffer_C + i*receiver_pk_size), (unsigned char*)(randC + bytes_ptr), receiver_sk, PADDING_MODE);
             bytes_ptr += res;
+            // cout << "i = " << i << "    res = " << res << "bytes_ptr = " << endl;
         }
+        decryptEnd = std::chrono::system_clock::now();
+        std::cout << "---[Time] Decrypting Enc(C): ";
+        std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(decryptEnd - decryptBegin).count() << "ms" << std::endl;
+        
+        
         cout << "Decrypting A/C [done]" << endl;
-
     }
     else{   //  直接copy
         memcpy(randA, buffer_A, bytes_count_A_total);
@@ -553,7 +602,7 @@ int main(int argc, char *argv[]) {
 
     //  sending Enc(B) and receive confirm
 
-
+    Timer sendresultBegin = std::chrono::system_clock::now();
 
     int total_sent = 0;      // 已发送数据的长度
     while (total_sent < buffer_size_B) {  // 只要还有数据未发送完毕
@@ -600,6 +649,12 @@ int main(int argc, char *argv[]) {
     //     return -1;
     // }
     // else cout << "---Send Enc(Delta) to Sender, confirm done." << endl;
+
+
+    Timer sendresultEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Socket Transfer: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(sendresultEnd - sendresultBegin).count() << "ms" << std::endl;
+    
     cout << "Sending Enc(B/Delta) to Sender [done]" << endl;
 
     cout << "--------------------------------------------------" << endl;
@@ -626,9 +681,16 @@ int main(int argc, char *argv[]) {
     close(receiver_sockfd);
     close(sender_sockfd);
 
+
+    Timer totalEnd = std::chrono::system_clock::now();
+    std::cout << "---[Time] Total time: ";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(totalEnd - totalBegin).count() << "ms" << std::endl;
+    
+
     /*----------- Done -----------*/
     // cout << "/*----------- Done -----------*/" << endl;
-    
+    // cout << "/*----------- Done -----------*/" << endl;
+
     
     // cout << "sgx return result = " << exit_status << endl;
     return exit_status;     //  according to occlum-exec result to return
