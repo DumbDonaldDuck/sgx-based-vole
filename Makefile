@@ -27,9 +27,15 @@ build_src:
 PROTOCOL_MODE=0
 # =0	A/C are not needed to encrypt
 # =1	A/C are needed to encrypt
+
+
+HYBRID_ENCRYPTION_ON=1
+# =0	hybrid encryption is off
+# =1	hybrid encryption is on
+
 test:
 	@LD_LIBRARY_PATH=out-sgx-receiver/build:$(SGX_SDK)/sdk_libs RUST_BACKTRACE=1 \
-		out-sgx-receiver/build/receiver $(PROTOCOL_MODE)
+		out-sgx-receiver/build/receiver $(PROTOCOL_MODE) $(HYBRID_ENCRYPTION_ON) 
 	
 
 clean:
