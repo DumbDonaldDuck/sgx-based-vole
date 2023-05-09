@@ -7,7 +7,12 @@ BIN := $(BUILD_DIR)/vole
 C_SRCS := $(wildcard *.cpp)
 C_OBJS := $(addprefix $(BUILD_DIR)/,$(C_SRCS:.cpp=.o))
 C_FLAGS := -Wall -lcrypto
-LINK_FLAGS := $(C_FLAGS)
+
+CUR_DIR := $(shell pwd)
+OWN_INCLUDE := $(CUR_DIR)/../include
+# @echo $(OWN_INCLUDE)
+
+LINK_FLAGS := $(C_FLAGS) -I$(OWN_INCLUDE)
 
 ALL_BUILD_SUBDIRS := $(sort $(patsubst %/,%,$(dir $(BIN) $(C_OBJS))))
 
@@ -22,7 +27,7 @@ $(BIN): $(C_OBJS)
 	@echo "LINK => $@"
 
 $(BUILD_DIR)/%.o: %.cpp
-	@$(CC) $(C_FLAGS) -c $< -o $@
+	@$(CC) $(C_FLAGS) -c $< -o $@ $(LINK_FLAGS)
 	@echo "CC <= $@"
 
 $(ALL_BUILD_SUBDIRS):

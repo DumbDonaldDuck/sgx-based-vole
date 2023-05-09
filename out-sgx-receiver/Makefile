@@ -24,11 +24,15 @@ PATCH_VER_NUM = $(shell grep '\#define OCCLUM_PATCH_VERSION' $(OCCLUM_PREFIX)/in
 VERSION_NUM = $(MAJOR_VER_NUM).$(MINOR_VER_NUM).$(PATCH_VER_NUM)
 
 
+CUR_DIR := $(shell pwd)
+OWN_INCLUDE := $(CUR_DIR)/../include
+
 CC := g++
 C_FLAGS := -Wall \
 	-lcrypto \
 	-I$(SGX_SDK)/include \
-	-I$(OCCLUM_PREFIX)/include
+	-I$(OCCLUM_PREFIX)/include \
+	-I$(OWN_INCLUDE)
 LINK_FLAGS := $(C_FLAGS) -lpthread \
 	-L$(SGX_SDK)/lib64 -l$(URTS_LIBRARY_NAME) -l$(UAE_SERVICE_LIBRARY_NAME) -lsgx_uprotected_fs \
 	-L$(BUILD_DIR) -locclum-pal
@@ -46,7 +50,7 @@ $(BIN): $(C_OBJS) libocclum-pal.so
 	@echo "LINK => $@"
 
 $(BUILD_DIR)/%.o: %.cpp
-	@$(CC) $(C_FLAGS) -c $< -o $@
+	@$(CC) $(C_FLAGS) -c $< -o $@ $(LINK_FLAGS)
 	@echo "CC <= $@"
 
 libocclum-pal.so: $(ALL_BUILD_SUBDIRS)

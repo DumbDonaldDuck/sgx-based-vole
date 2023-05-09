@@ -20,11 +20,11 @@ occlum_instance: build_src
 	bash occlum_build.sh
 
 build_src:
+	@$(MAKE) --no-print-directory -C sender
 	@$(MAKE) --no-print-directory -C in-sgx-receiver
 	@$(MAKE) --no-print-directory -C out-sgx-receiver
-	@$(MAKE) --no-print-directory -C sender
 
-PROTOCOL_MODE=0
+PROTOCOL_MODE=1
 # =0	A/C are not needed to encrypt
 # =1	A/C are needed to encrypt
 

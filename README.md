@@ -1,5 +1,5 @@
-to run this protocol
-
+## to run this protocol
+```shell
 make clean
 
 make
@@ -7,3 +7,4 @@ make
 make test                   //  start the receiver
 
 ./sender/build/sender 127.0.0.1 4602     //  start the sender 
+```
