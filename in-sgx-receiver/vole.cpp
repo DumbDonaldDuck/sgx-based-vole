@@ -289,11 +289,9 @@ int main(int argc, char *argv[]){
         (const unsigned char*)(randB + (iter * bytes_count_B * element_B_count_per_cipher)), \
         (unsigned char*)(share_buf_B_ptr + (iter * sender_pk_size)) , \
         sender_pk_inside, PADDING_MODE);
-        std::cout << "---[In SGX] ---Encrypt B done" << endl;
 
         //  Encrypt Delta
         RSA_public_encrypt(bytes_count_Delta, randDelta, share_buf_Delta_ptr, sender_pk_inside, PADDING_MODE);
-        std::cout << "---[In SGX] ---Encrypt Delta done" << endl;
     }
     
     

@@ -24,7 +24,7 @@ build_src:
 	@$(MAKE) --no-print-directory -C in-sgx-receiver
 	@$(MAKE) --no-print-directory -C out-sgx-receiver
 
-PROTOCOL_MODE=1
+PROTOCOL_MODE=0
 # =0	A/C are not needed to encrypt
 # =1	A/C are needed to encrypt
 
